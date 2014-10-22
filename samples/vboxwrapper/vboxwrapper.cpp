@@ -48,6 +48,9 @@
 #ifdef _WIN32
 #include "boinc_win.h"
 #include "win_util.h"
+#include "atlcomcli.h"
+#include "atlstr.h"
+#include "mscom/VirtualBox.h"
 #else
 #include <vector>
 #include <sys/wait.h>
@@ -72,6 +75,12 @@
 #include "procinfo.h"
 #include "vboxwrapper.h"
 #include "vbox.h"
+
+#ifdef _WIN32
+#include "vbox_win.h"
+#else
+#include "vbox_unix.h"
+#endif
 
 using std::vector;
 using std::string;
@@ -126,17 +135,24 @@ char* vboxwrapper_msg_prefix(char* sbuf, int len) {
     return sbuf;
 }
 
-int VBOX_VM::parse_port_forward(XML_PARSER& xp) {
+int parse_port_forward(VBOX_VM& vm, XML_PARSER& xp) {
+    char buf2[256];
     int host_port=0, guest_port=0, nports=1;
     bool is_remote;
     while (!xp.get_tag()) {
         if (xp.match_tag("/port_forward")) {
             if (!host_port) {
-                fprintf(stderr, "parse_port_forward: unspecified host port\n");
+                fprintf(stderr,
+                    "%s parse_port_forward(): unspecified host port\n",
+                    vboxwrapper_msg_prefix(buf2, sizeof(buf2))
+                );
                 return ERR_XML_PARSE;
             }
             if (!guest_port) {
-                fprintf(stderr, "parse_port_forward: unspecified guest port\n");
+                fprintf(stderr,
+                    "%s parse_port_forward(): unspecified guest port\n",
+                    vboxwrapper_msg_prefix(buf2, sizeof(buf2))
+                );
                 return ERR_XML_PARSE;
             }
             PORT_FORWARD pf;
@@ -144,7 +160,7 @@ int VBOX_VM::parse_port_forward(XML_PARSER& xp) {
             pf.guest_port = guest_port;
             pf.is_remote = is_remote;
             for (int i=0; i<nports; i++) {
-                port_forwards.push_back(pf);
+                vm.port_forwards.push_back(pf);
                 pf.host_port++;
                 pf.guest_port++;
             }
@@ -155,7 +171,11 @@ int VBOX_VM::parse_port_forward(XML_PARSER& xp) {
         else if (xp.parse_int("guest_port", guest_port)) continue;
         else if (xp.parse_int("nports", nports)) continue;
         else {
-            fprintf(stderr, "parse_port_forward: unparsed %s\n", xp.parsed_tag);
+            fprintf(stderr,
+                "%s parse_port_forward(): unparsed %s\n",
+                vboxwrapper_msg_prefix(buf2, sizeof(buf2)),
+                xp.parsed_tag
+            );
         }
     }
     return ERR_XML_PARSE;
@@ -227,7 +247,7 @@ int parse_job_file(VBOX_VM& vm) {
             continue;
         }
         else if (xp.match_tag("port_forward")) {
-            vm.parse_port_forward(xp);
+            parse_port_forward(vm, xp);
         }
         fprintf(stderr, "%s parse_job_file(): unexpected tag %s\n",
             vboxwrapper_msg_prefix(buf, sizeof(buf)), xp.parsed_tag
@@ -401,11 +421,11 @@ void set_floppy_image(APP_INIT_DATA& aid, VBOX_VM& vm) {
 
 // if there's a port for web graphics, tell the client about it
 //
-void VBOX_VM::set_web_graphics_url() {
+void set_web_graphics_url(VBOX_VM& vm) {
     char buf[256];
-    for (unsigned int i=0; i<port_forwards.size(); i++) {
-        PORT_FORWARD& pf = port_forwards[i];
-        if (pf.guest_port == pf_guest_port) {
+    for (unsigned int i=0; i<vm.port_forwards.size(); i++) {
+        PORT_FORWARD& pf = vm.port_forwards[i];
+        if (pf.guest_port == vm.pf_guest_port) {
             sprintf(buf, "http://localhost:%d", pf.host_port);
             boinc_web_graphics_url(buf);
             break;
@@ -1095,7 +1115,7 @@ int main(int argc, char** argv) {
 
     set_floppy_image(aid, vm);
     //set_port_forwarding_info(aid, vm);
-    vm.set_web_graphics_url();
+    set_web_graphics_url(vm);
     set_remote_desktop_info(aid, vm);
     write_checkpoint(elapsed_time, current_cpu_time, vm);
 

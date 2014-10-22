@@ -83,10 +83,11 @@ struct PORT_FORWARD {
     int get_host_port();    // assign host port
 };
 
-class VBOX_BASE {
+// represents a VirtualBox VM
+class VBOX_VM {
 public:
-    VBOX_BASE();
-    ~VBOX_BASE();
+    VBOX_VM();
+    ~VBOX_VM();
 
     std::string virtualbox_home_directory;
     std::string virtualbox_install_directory;
@@ -190,30 +191,47 @@ public:
 
     /////////// END VBOX_JOB.XML ITEMS //////////////
 
+    int vm_pid;
+    int vboxsvc_pid;
+#ifdef _WIN32
+    // the handle to the process for the VM
+    // NOTE: we get a handle to the pid right after we parse it from the
+    //   log files so we can adjust the process priority and retrieve the process
+    //   exit code in case it crashed or was terminated.  Without an outstanding
+    //   handle to the process, the OS is free to reuse the pid for some other
+    //   executable.
+    HANDLE vm_pid_handle;
 
-    virtual int initialize();
-    virtual int create_vm();
-    virtual int register_vm();
-    virtual int deregister_vm(bool delete_media);
-    virtual int deregister_stale_vm();
-    virtual void poll(bool log_state = true);
-    virtual int start();
-    virtual int stop();
-    virtual int poweroff();
-    virtual int pause();
-    virtual int resume();
-    virtual int create_snapshot(double elapsed_time);
-    virtual int cleanup_snapshots(bool delete_active);
-    virtual int restore_snapshot();
+    // the handle to the vboxsvc process created by us in the sandbox'ed environment
+    HANDLE vboxsvc_pid_handle;
+#endif
+
+    int initialize();
+    int parse_port_forward(XML_PARSER&);
+    void set_web_graphics_url();
+    void poll(bool log_state = true);
+
+    int create_vm();
+    int register_vm();
+    int deregister_vm(bool delete_media);
+    int deregister_stale_vm();
 
     int run(bool do_restore_snapshot);
     void cleanup();
 
+    int start();
+    int stop();
+    int poweroff();
+    int pause();
+    int resume();
+    void check_trickle_triggers();
+    void check_intermediate_uploads();
+    int create_snapshot(double elapsed_time);
+    int cleanup_snapshots(bool delete_active);
+    int restore_snapshot();
     void dump_hypervisor_logs(bool include_error_logs);
     void dump_hypervisor_status_reports();
     void dump_vmguestlog_entries();
-    void check_trickle_triggers();
-    void check_intermediate_uploads();
 
     int is_registered();
     bool is_system_ready(std::string& message);
@@ -253,6 +271,9 @@ public:
 
     void lower_vm_process_priority();
     void reset_vm_process_priority();
+
+    int launch_vboxsvc();
+    int launch_vboxvm();
 
     void sanitize_output(std::string& output);
 
