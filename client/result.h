@@ -57,7 +57,7 @@ struct RESULT {
     double intops_cumulative;
 
     int _state;
-        // state of this result: see lib/result_state.h
+        // state of this result: see lib/common_defs.h
     inline int state() { return _state; }
     inline void set_ready_to_report() {
         ready_to_report = true;
